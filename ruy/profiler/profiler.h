@@ -19,9 +19,7 @@ limitations under the License.
 #include <cstdio>
 
 #ifdef RUY_PROFILER
-#include <atomic>
 #include <chrono>
-#include <thread>
 #include <vector>
 #endif
 

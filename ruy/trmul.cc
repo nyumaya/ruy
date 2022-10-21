@@ -18,7 +18,6 @@ limitations under the License.
 #include "ruy/trmul.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -39,14 +38,18 @@ limitations under the License.
 #include "ruy/opt_set.h"
 #include "ruy/profiler/instrumentation.h"
 #include "ruy/side_pair.h"
-#include "ruy/size_util.h"
-#include "ruy/thread_pool.h"
+#include "ruy/size_util.h""
 #include "ruy/trace.h"
 #include "ruy/tune.h"
 
 namespace ruy {
 
 namespace {
+
+struct Task {
+  virtual ~Task() {}
+  virtual void Run() = 0;
+};
 
 // Enum to track the packingstatus of a block of the LHS or RHS matrix.
 enum class PackingStatus : std::uint8_t {
@@ -58,17 +61,12 @@ enum class PackingStatus : std::uint8_t {
 // TrMulTask is the task that a ruy thread runs to perform the TrMul operation.
 class TrMulTask final : public Task {
  public:
-  TrMulTask(TrMulParams* params, const BlockMap& block_map,
-            std::atomic<int>* atomic_block_id, int thread_id, bool need_atomics,
-            SidePair<std::atomic<PackingStatus>*> packing_status,
+  TrMulTask(TrMulParams* params, const BlockMap& block_map, int thread_id,
             TuningResolver* tuning_resolver, Allocator* local_allocator,
             CpuInfo* cpuinfo)
       : params_(params),
         block_map_(block_map),
-        atomic_block_id_(atomic_block_id),
         thread_id_(thread_id),
-        need_atomics_(need_atomics),
-        packing_status_(packing_status),
         tuning_resolver_(tuning_resolver),
         local_allocator_(local_allocator),
         local_already_packed_{nullptr, nullptr},
@@ -97,8 +95,7 @@ class TrMulTask final : public Task {
     while (block_id < num_blocks) {
       RUY_TRACE_SCOPE_NAME("Main loop iteration");
       // Reserve the next block to handle, hiding the latency of this atomic op.
-      const int next_block_id =
-          atomic_block_id_->fetch_add(1, std::memory_order_relaxed);
+      const int next_block_id = block_id + 1;
       // Get coordinates of the current block to handle, in "block space".
       SidePair<int> block;
       GetBlockByIndex(block_map_, block_id, &block);
@@ -128,66 +125,7 @@ class TrMulTask final : public Task {
       return true;
     }
     if (!local_already_packed_[side][block]) {
-      if (need_atomics_) {
-        // Explanation of this compare_exchange_strong operation:
-        // This atomically performs all of the following:
-        // 1. Read `status` with "acquire" memory order.
-        //    * That this read uses "acquire" is because both memory orders
-        //      specified have "acquire" as their read-component.
-        // 2. Compare (bitwise) with `exchanged_status`.
-        // 3. If equal, stores the value kInProgress to `status` with "release"
-        //    memory order, and returns true, so we take this 'if' branch.
-        //    * That this store uses "release" is because of the _rel part in
-        //      memory_order_acq_rel passed as the first memory order argument.
-        // 4. If not equal, stores the loaded value of `status` to
-        //    `exchanged_status` with "relaxed" semantics, and returns false,
-        //    so we take the 'else' branch.
-        //    * That this store uses "relaxed" is because the second memory
-        //      order argument, memory_order_acquire, implies no particular
-        //      store semantics. "relaxed" is acceptable here because this
-        //      stores to a local stack variable.
-        //
-        // Rationale for compare_exchange_strong as opposed to
-        // compare_exchange_weak:
-        // The spurious-failure case with compare_exchange_weak will actually
-        // happen a lot here, because the atomic 'status' bytes are stored
-        // contiguously in arrays and neighboring values will be accessed
-        // by multiple threads concurrently. On a typical ARM CPU, an exclusives
-        // reservation granule is 64 bytes, so a lot of false-sharing may
-        // happen. Using compare_exchange_weak would thus result in often having
-        // TryPack return 'false' when it could instead have done the packing
-        // work and returned 'true'. Heuristically, that is not a good thing.
-        // Moreover, this changes the TryPack contract, loosening it and making
-        // it harder for the caller to reason about. Finally, the overhead of
-        // atomic operations is mitigated by the enclosing check on
-        // local_already_packed, so maybe the overhead of
-        // compare_exchange_strong isn't such a problem. But we don't really
-        // know for sure, that would be interesting to experiment more with.
-        PackingStatus exchanged_status = PackingStatus::kNotStarted;
-        std::atomic<PackingStatus>& status = packing_status_[side][block];
-        if (status.compare_exchange_strong(
-                exchanged_status, PackingStatus::kInProgress,
-                std::memory_order_acq_rel, std::memory_order_acquire)) {
-          // In this branch, the status was kNotStarted and we just atomically
-          // changed it to kInProgress as we are about to handle the packing
-          // ourselves.
-          RUY_TRACE_INFO(TRYPACK_PACKING);
-          params_->RunPack(side, tuning, start, end);
-          status.store(PackingStatus::kFinished, std::memory_order_release);
-        } else if (exchanged_status == PackingStatus::kInProgress) {
-          // Another thread is currently packing this block.
-          RUY_TRACE_INFO(TRYPACK_ANOTHER_THREAD_PACKING);
-          return false;
-        } else {
-          RUY_TRACE_INFO(TRYPACK_PACKED_BY_ANOTHER_THREAD);
-        }
-        RUY_DCHECK(status.load(std::memory_order_acquire) ==
-                   PackingStatus::kFinished);
-      } else {
-        // Single-threaded case: no need for expensive atomics,
-        // local_already_packed is the truth already.
-        params_->RunPack(side, tuning, start, end);
-      }
+      params_->RunPack(side, tuning, start, end);
       local_already_packed_[side][block] = true;
     } else {
       RUY_TRACE_INFO(TRYPACK_PREVIOUSLY_PACKED);
@@ -236,10 +174,7 @@ class TrMulTask final : public Task {
 
   TrMulParams* params_;
   const BlockMap& block_map_;
-  std::atomic<int>* atomic_block_id_;
   int thread_id_;
-  bool need_atomics_;
-  SidePair<std::atomic<PackingStatus>*> packing_status_;
   TuningResolver* tuning_resolver_;
   Allocator* local_allocator_;
 
@@ -261,7 +196,7 @@ int GetTentativeThreadCount(Ctx* ctx, int rows, int cols, int depth) {
   // Be defensive here by explicitly promoting operands to int64 to avoid the
   // pitfall of `int64 result = x * y;` overflowing as x and y are still narrow.
   if (ctx->num_threads_strategy() == NumThreadsStrategy::kForceMaxNumThreads) {
-    return ctx->max_num_threads();
+    return 1;
   }
   RUY_CHECK_EQ(ctx->num_threads_strategy(), NumThreadsStrategy::kDefault);
   const std::int64_t rows_i64 = rows;
@@ -276,7 +211,7 @@ int GetTentativeThreadCount(Ctx* ctx, int rows, int cols, int depth) {
   // large, but imagine that that constant might change in the future.
   tentative_thread_count = std::max<std::int64_t>(tentative_thread_count, 1);
   tentative_thread_count =
-      std::min<std::int64_t>(tentative_thread_count, ctx->max_num_threads());
+      std::min<std::int64_t>(tentative_thread_count, 1);
   // now tentative_thread_count must be in the range of type int, because
   // ctx->max_num_threads() is.
   RUY_DCHECK_LE(tentative_thread_count, std::numeric_limits<int>::max());
@@ -310,7 +245,7 @@ void TrMul(Ctx* ctx, TrMulParams* params) {
   RUY_TRACE_SCOPE;
   profiler::ScopeLabel label(
       "TrMul (Path=0x%x, max_num_threads=%d, is_prepacked=(%d,%d))",
-      static_cast<int>(params->path), ctx->max_num_threads(),
+      static_cast<int>(params->path), 1,
       params->is_prepacked[Side::kLhs], params->is_prepacked[Side::kRhs]);
 
   PEMat& packed_lhs = params->packed_matrix[Side::kLhs];
@@ -368,7 +303,7 @@ void TrMul(Ctx* ctx, TrMulParams* params) {
 
   // Initialize per-thread state.
   const int thread_count = block_map.thread_count;
-  const bool need_atomics = thread_count > 1;
+
   ctx->EnsureThreadSpecificResources(thread_count);
   for (int i = 0; i < thread_count; i++) {
     ctx->GetThreadSpecificTuningResolver(i)->SetTuning(ctx->explicit_tuning());
@@ -376,26 +311,15 @@ void TrMul(Ctx* ctx, TrMulParams* params) {
 
   // In the need_atomics case, allocate and initialize atomic values tracking
   // the packing status of blocks.
-  SidePair<std::atomic<PackingStatus>*> packing_status{nullptr, nullptr};
-  if (need_atomics) {
-    for (Side side : {Side::kLhs, Side::kRhs}) {
-      if (!params->is_prepacked[side]) {
-        const int size = NumBlocksPerSide(side, block_map);
-        main_allocator->Allocate(size, &packing_status[side]);
-        for (int i = 0; i < size; i++) {
-          packing_status[side][i].store(PackingStatus::kNotStarted,
-                                        std::memory_order_relaxed);
-        }
-      }
-    }
-  }
+  //SidePair<std::atomic<PackingStatus>*> packing_status{nullptr, nullptr};
+
 
   // Create the atomic block id, allocate it using Allocator so that
   // we get the alignment ensuring that it sits alone in its exclusives
   // reservation granule.
-  std::atomic<int>* atomic_block_id;
-  main_allocator->Allocate(1, &atomic_block_id);
-  atomic_block_id->store(thread_count);
+  //std::atomic<int>* atomic_block_id;
+  //main_allocator->Allocate(1, &atomic_block_id);
+  //atomic_block_id->store(thread_count);
 
   // Create task objects. We allocate a single buffer and then use placement-new
   // to construct N TrMulTask objects within it. To avoid having the Clang CFI
@@ -407,13 +331,14 @@ void TrMul(Ctx* ctx, TrMulParams* params) {
     auto* allocator = ctx->GetThreadSpecificAllocator(i);
     auto* tuning_resolver = ctx->GetThreadSpecificTuningResolver(i);
     new (tasks_buf + i * sizeof(TrMulTask)) TrMulTask(
-        params, block_map, atomic_block_id, i, need_atomics, packing_status,
+        params, block_map, i,
         tuning_resolver, allocator, ctx->mutable_cpuinfo());
   }
   TrMulTask* tasks = reinterpret_cast<TrMulTask*>(tasks_buf);
 
   // Do the computation.
-  ctx->mutable_thread_pool()->Execute(thread_count, tasks);
+  tasks[0].Run();
+  //ctx->mutable_thread_pool()->Execute(thread_count, tasks);
 
   // Finish up.
   for (int i = 0; i < thread_count; i++) {

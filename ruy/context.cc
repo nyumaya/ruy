@@ -21,7 +21,7 @@ limitations under the License.
 #include "ruy/path.h"
 #include "ruy/performance_advisory.h"
 #include "ruy/prepacked_cache.h"
-#include "ruy/thread_pool.h"
+
 #include "ruy/tune.h"
 
 namespace ruy {
@@ -37,14 +37,18 @@ Tuning Context::explicit_tuning() const { return ctx().explicit_tuning(); }
 void Context::set_explicit_tuning(Tuning value) {
   mutable_ctx()->set_explicit_tuning(value);
 }
+/*
 const ThreadPool& Context::thread_pool() const { return ctx().thread_pool(); }
 ThreadPool* Context::mutable_thread_pool() {
   return mutable_ctx()->mutable_thread_pool();
-}
+}*/
+/*
 int Context::max_num_threads() const { return ctx().max_num_threads(); }
+*/
 void Context::set_max_num_threads(int value) {
-  mutable_ctx()->set_max_num_threads(value);
+
 }
+
 NumThreadsStrategy Context::num_threads_strategy() const {
   return ctx().num_threads_strategy();
 }

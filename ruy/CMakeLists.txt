@@ -113,40 +113,6 @@ endif()
 
 ruy_cc_library(
   NAME
-    ruy_wait
-  SRCS
-    wait.cc
-  HDRS
-    wait.h
-  COPTS
-    ${ruy_0_Wall_Wcxx14_compat_Wextra_Wundef}
-    ${ruy_1_mfpu_neon}
-    ${ruy_2_O3}
-  LINKOPTS
-    ${ruy_3_pthread}
-  DEPS
-    ruy_time
-)
-
-ruy_cc_test(
-  NAME
-    ruy_wait_test
-  SRCS
-    wait_test.cc
-  COPTS
-    ${ruy_0_Wall_Wcxx14_compat_Wextra_Wundef}
-    ${ruy_1_mfpu_neon}
-    ${ruy_2_O3}
-  LINKOPTS
-    ${ruy_3_pthread}
-  DEPS
-    ruy_gtest_wrapper
-    ruy_platform
-    ruy_wait
-)
-
-ruy_cc_library(
-  NAME
     ruy_size_util
   HDRS
     size_util.h
@@ -340,47 +306,7 @@ ruy_cc_test(
     ruy_side_pair
 )
 
-ruy_cc_library(
-  NAME
-    ruy_blocking_counter
-  SRCS
-    blocking_counter.cc
-  HDRS
-    blocking_counter.h
-  COPTS
-    ${ruy_0_Wall_Wcxx14_compat_Wextra_Wundef}
-    ${ruy_1_mfpu_neon}
-    ${ruy_2_O3}
-  LINKOPTS
-    ${ruy_3_pthread}
-  DEPS
-    ruy_check_macros
-    ruy_time
-    ruy_wait
-)
 
-ruy_cc_library(
-  NAME
-    ruy_thread_pool
-  SRCS
-    thread_pool.cc
-  HDRS
-    thread_pool.h
-  COPTS
-    ${ruy_0_Wall_Wcxx14_compat_Wextra_Wundef}
-    ${ruy_1_mfpu_neon}
-    ${ruy_2_O3}
-  LINKOPTS
-    ${ruy_3_pthread}
-  PUBLIC
-  DEPS
-    ruy_blocking_counter
-    ruy_check_macros
-    ruy_denormal
-    ruy_time
-    ruy_trace
-    ruy_wait
-)
 
 ruy_cc_library(
   NAME
@@ -994,7 +920,6 @@ ruy_cc_library(
     ruy_performance_advisory
     ruy_platform
     ruy_prepacked_cache
-    ruy_thread_pool
     ruy_tune
 )
 
@@ -1045,7 +970,6 @@ ruy_cc_library(
     ruy_performance_advisory
     ruy_platform
     ruy_prepacked_cache
-    ruy_thread_pool
     ruy_trace
     ruy_tune
 )
@@ -1124,7 +1048,6 @@ ruy_cc_library(
     ruy_opt_set
     ruy_side_pair
     ruy_size_util
-    ruy_thread_pool
     ruy_trace
     ruy_trmul_params
     ruy_tune

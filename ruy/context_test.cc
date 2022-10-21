@@ -28,17 +28,17 @@ TEST(ContextTest, ContextClassSanity) {
   Context context;
   EXPECT_EQ(context.last_used_path(), Path::kNone);
   EXPECT_EQ(context.explicit_tuning(), Tuning::kAuto);
-  EXPECT_EQ(&context.thread_pool(), context.mutable_thread_pool());
-  EXPECT_NE(context.mutable_thread_pool(), nullptr);
-  EXPECT_EQ(context.max_num_threads(), 1);
-  EXPECT_EQ(context.num_threads_strategy(), NumThreadsStrategy::kDefault);
+  //EXPECT_EQ(&context.thread_pool(), context.mutable_thread_pool());
+  //EXPECT_NE(context.mutable_thread_pool(), nullptr);
+  //EXPECT_EQ(context.max_num_threads(), 1);
+  //EXPECT_EQ(context.num_threads_strategy(), NumThreadsStrategy::kDefault);
   context.set_explicit_tuning(Tuning::kGeneric);
-  context.set_max_num_threads(2);
-  context.set_num_threads_strategy(NumThreadsStrategy::kForceMaxNumThreads);
+  //context.set_max_num_threads(2);
+  //context.set_num_threads_strategy(NumThreadsStrategy::kForceMaxNumThreads);
   EXPECT_EQ(context.explicit_tuning(), Tuning::kGeneric);
-  EXPECT_EQ(context.max_num_threads(), 2);
-  EXPECT_EQ(context.num_threads_strategy(),
-            NumThreadsStrategy::kForceMaxNumThreads);
+  //EXPECT_EQ(context.max_num_threads(), 2);
+  //EXPECT_EQ(context.num_threads_strategy(),
+   //         NumThreadsStrategy::kForceMaxNumThreads);
 }
 
 }  // namespace

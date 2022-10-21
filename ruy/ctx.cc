@@ -40,12 +40,7 @@ Tuning Ctx::explicit_tuning() const { return impl().explicit_tuning_; }
 void Ctx::set_explicit_tuning(Tuning value) {
   mutable_impl()->explicit_tuning_ = value;
 }
-const ThreadPool& Ctx::thread_pool() const { return impl().thread_pool_; }
-ThreadPool* Ctx::mutable_thread_pool() { return &mutable_impl()->thread_pool_; }
-int Ctx::max_num_threads() const { return impl().max_num_threads_; }
-void Ctx::set_max_num_threads(int value) {
-  mutable_impl()->max_num_threads_ = value;
-}
+
 void Ctx::clear_performance_advisories() {
   mutable_impl()->performance_advisory_ = PerformanceAdvisory::kNone;
 }

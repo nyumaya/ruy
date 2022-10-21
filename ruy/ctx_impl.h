@@ -30,7 +30,6 @@ limitations under the License.
 #include "ruy/performance_advisory.h"
 #include "ruy/prepacked_cache.h"
 #include "ruy/strategy_controls.h"
-#include "ruy/thread_pool.h"
 #include "ruy/tune.h"
 
 namespace ruy {
@@ -62,7 +61,6 @@ class CtxImpl final : public Ctx {
   Path last_used_path_ = Path::kNone;
   PerformanceAdvisory performance_advisory_ = PerformanceAdvisory::kNone;
   Tuning explicit_tuning_ = Tuning::kAuto;
-  ThreadPool thread_pool_;
   int max_num_threads_ = 1;
   NumThreadsStrategy num_threads_strategy_ = NumThreadsStrategy::kDefault;
   // Allocator for main thread work before invoking the threadpool.
